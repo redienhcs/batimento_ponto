@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Previsão de Batimento de Ponto</title>
+<style>
+  :root {
+    --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --muted:#94a3b8;
+    --primary:#3b82f6; --primary-dark:#2563eb; --danger:#ef4444;
+    --border:#334155; --ok:#22c55e; --warn:#f59e0b;
+    --result-bg:#172554; --result-border:#3b82f6;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: "Segoe UI", system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--text); }
+  header { background:#1e3a8a; color:#fff; padding:18px 24px; border-bottom:1px solid var(--border); }
+  header h1 { margin:0; font-size:22px; }
+  header p { margin:4px 0 0; opacity:.9; font-size:14px; }
+  main { max-width:1100px; margin:20px auto; padding:0 16px 40px; display:grid; gap:18px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px 20px; box-shadow:0 1px 3px rgba(0,0,0,.3); }
+  .card h2 { margin:0 0 12px; font-size:17px; color:var(--primary); }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:12px; }
+  .field { display:flex; flex-direction:column; gap:4px; }
+  .field label { font-size:13px; color:var(--muted); }
+  .field input { padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:14px; background:#0f172a; color:var(--text); }
+  .field input:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 2px rgba(59,130,246,.25); }
+  .btn { padding:9px 14px; border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:600; }
+  .btn-primary { background:var(--primary); color:#fff; }
+  .btn-primary:hover { background:var(--primary-dark); }
+  .btn-ghost { background:#334155; color:var(--text); }
+  .btn-ghost:hover { background:#475569; }
+  .btn-danger { background:var(--danger); color:#fff; }
+  .btn-success { background:#16a34a; color:#fff; }
+  .btn-success:hover { background:#15803d; }
+  .btn-warning { background:#d97706; color:#fff; }
+  .btn-warning:hover { background:#b45309; }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; align-items:center; }
+  .result { margin-top:14px; padding:14px; background:var(--result-bg); border:1px solid var(--result-border); border-radius:8px; }
+  .result h3 { margin:0 0 8px; font-size:15px; color:var(--primary); }
+  .result-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:8px; }
+  .result-item { background:#0f172a; border:1px solid var(--border); border-radius:6px; padding:8px 10px; }
+  .result-item .k { font-size:12px; color:var(--muted); }
+  .result-item .v { font-size:18px; font-weight:700; color:var(--primary); }
+  .note { font-size:13px; color:var(--muted); margin-top:6px; }
+  .warn { color:var(--warn); }
+  .ok { color:var(--ok); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
+  th { background:#0f172a; color:var(--muted); font-weight:600; }
+  tbody tr:hover { background:#0f172a; }
+  tbody tr.abaixo { color: var(--danger); }
+  tbody tr.abaixo td { color: var(--danger); }
+  .table-wrap { overflow-x:auto; }
+  .row-actions button { padding:4px 8px; font-size:12px; }
+  code { background:#0f172a; padding:1px 4px; border-radius:4px; color:var(--primary); }
+  footer { text-align:center; color:var(--muted); font-size:12px; padding:10px; }
+  @media (max-width:600px){ .grid{grid-template-columns:1fr 1fr;} }
+</style>
+</head>
+<body>
+<header>
+  <h1>Previsão de Batimento de Ponto</h1>
+  <p>Aplicação local, um único arquivo HTML. Dados e cálculos no navegador (sem backend). Modo noturno.</p>
+</header>
+<main>
+
+<section class="card">
+  <h2>1. Configuração</h2>
+  <div class="grid">
+    <div class="field"><label>Saída final desejada</label><input type="time" id="cfgSaidaFinal" value="17:00"></div>
+    <div class="field"><label>Jornada alvo (h)</label><input type="time" id="cfgJornada" value="08:00"></div>
+    <div class="field"><label>Duração do almoço</label><input type="time" id="cfgAlmoco" value="01:06"></div>
+    <div class="field"><label>Almoço mínimo</label><input type="time" id="cfgAlmocoMin" value="00:30"></div>
+    <div class="field"><label>Manhã média</label><input type="time" id="cfgManha" value="04:25"></div>
+    <div class="field"><label>Tarde média</label><input type="time" id="cfgTarde" value="03:39"></div>
+  </div>
+  <div class="actions">
+    <button class="btn btn-ghost" id="btnRestaurar">Restaurar médias históricas</button>
+    <button class="btn btn-ghost" id="btnRecalcStats">Recalcular a partir do histórico</button>
+  </div>
+</section>
+
+<section class="card">
+  <h2>2. Histórico de batimentos</h2>
+  <div class="grid">
+    <div class="field"><label>Data</label><input type="date" id="histData"></div>
+    <div class="field"><label>Entrada</label><input type="text" id="histEntrada" placeholder="HH:MM" maxlength="5" inputmode="numeric"></div>
+    <div class="field"><label>Saída almoço</label><input type="text" id="histSaidaAlmoco" placeholder="HH:MM" maxlength="5" inputmode="numeric"></div>
+    <div class="field"><label>Retorno almoço</label><input type="text" id="histRetorno" placeholder="HH:MM" maxlength="5" inputmode="numeric"></div>
+    <div class="field"><label>Saída final</label><input type="text" id="histSaida" placeholder="HH:MM" maxlength="5" inputmode="numeric"></div>
+  </div>
+  <p class="note">Digite manualmente no formato HH:MM ou use o seletor: <input type="time" id="histTimePicker" style="width:auto; display:inline-block; margin-left:6px;"></p>
+  <div class="actions">
+    <button class="btn btn-success" id="btnAddHist">Adicionar ao histórico</button>
+    <button class="btn btn-warning" id="btnLimparCamposHist">Limpar campos</button>
+    <button class="btn btn-primary" id="btnCalcular">Calcular batimentos</button>
+  </div>
+  <div class="table-wrap" style="margin-top:12px;">
+    <table>
+      <thead><tr><th>Data</th><th>Entrada</th><th>Saída almoço</th><th>Retorno</th><th>Saída final</th><th>Jornada</th><th></th></tr></thead>
+      <tbody id="histBody"></tbody>
+    </table>
+  </div>
+  <p class="note" id="histCount"></p>
+  <div id="resultado" class="result" style="display:none;">
+    <h3 id="resultadoTitulo">Resultado</h3>
+    <div class="result-grid" id="resultadoGrid"></div>
+    <p class="note" id="resultadoNota"></p>
+  </div>
+</section>
+
+<p class="note warn" id="backupReminder" style="display:none; background:#422006; padding:10px; border-radius:6px; border:1px solid #d97706;">⚠ Há novos registros desde o último backup. Considere exportar o histórico.</p>
+
+<section class="card">
+  <h2>3. Importar / Exportar</h2>
+  <div class="actions">
+    <input type="file" id="fileCsv" accept=".csv,text/csv" style="display:none;">
+    <input type="file" id="fileCompCsv" accept=".csv,text/csv" style="display:none;">
+    <button class="btn btn-ghost" id="btnImportar">Importar batimentos (CSV)</button>
+    <button class="btn btn-ghost" id="btnExportar">Exportar batimentos (CSV)</button>
+    <button class="btn btn-ghost" id="btnImportarComp">Importar compensação (CSV)</button>
+    <button class="btn btn-ghost" id="btnExportarComp">Exportar compensação (CSV)</button>
+    <button class="btn btn-primary" id="btnExportarTudo">Exportar tudo (JSON)</button>
+    <button class="btn btn-primary" id="btnImportarTudo">Importar tudo (JSON)</button>
+    <input type="file" id="fileTudo" accept=".json,application/json" style="display:none;">
+    <button class="btn btn-danger" id="btnLimparHist">Limpar histórico</button>
+  </div>
+  <p class="note">CSV esperado: <code>data,entrada,saida_almoco,retorno_almoco,saida</code> (cabeçalho opcional). Horários em <code>HH:MM</code>.</p>
+  <div class="field" style="margin-top:10px;">
+    <label>Colar dados copiados do site (tabela/linhas com horários)</label>
+    <textarea id="pasteArea" rows="6" style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; background:#0f172a; color:var(--text); font-family:monospace; font-size:12px;" placeholder="Cole aqui o texto copiado da página do ponto"></textarea>
+  </div>
+  <div class="actions">
+    <button class="btn btn-ghost" id="btnImportarPaste">Importar do texto colado</button>
+  </div>
+</section>
+
+<section class="card">
+  <h2>4. Estatísticas do histórico</h2>
+  <div class="result-grid" id="statsGrid"></div>
+  <p class="note" id="statsNota"></p>
+</section>
+
+<section class="card">
+  <h2>5. Compensação de tempo</h2>
+  <div class="grid">
+    <div class="field"><label>Data</label><input type="date" id="compData"></div>
+    <div class="field"><label>Início</label><input type="time" id="compInicio"></div>
+    <div class="field"><label>Fim</label><input type="time" id="compFim"></div>
+    <div class="field"><label>Duração</label><input type="text" id="compDuracao" readonly placeholder="00:00"></div>
+    <div class="field"><label>Motivo</label><input type="text" id="compMotivo" placeholder="Ex.: hora extra, falta..."></div>
+  </div>
+  <div class="actions">
+    <button class="btn btn-success" id="btnAddComp">Adicionar ao histórico de compensação</button>
+    <button class="btn btn-ghost" id="btnCancelarComp" style="display:none;">Cancelar edição</button>
+    <button class="btn btn-danger" id="btnLimparComp">Limpar histórico de compensação</button>
+  </div>
+  <div class="table-wrap" style="margin-top:12px;">
+    <table>
+      <thead><tr><th>Data</th><th>Início</th><th>Fim</th><th>Duração</th><th>Motivo</th><th></th></tr></thead>
+      <tbody id="compBody"></tbody>
+    </table>
+  </div>
+  <p class="note" id="compCount"></p>
+  <p class="note"><strong>Total compensado:</strong> <span id="compTotal">00:00</span></p>
+  <div id="compPorMotivo" class="note" style="margin-top:8px;"></div>
+</section>
+
+<section class="card">
+  <h2>6. Tendências</h2>
+  <p class="note">Gráfico dos batimentos do histórico (entrada, jornada e almoço). Eixo X = ordem dos registros.</p>
+  <canvas id="trendCanvas" width="900" height="320" style="width:100%; height:auto; background:#0f172a; border:1px solid var(--border); border-radius:6px;"></canvas>
+  <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; font-size:12px;">
+    <span style="color:#60a5fa;">● Entrada (h)</span>
+    <span style="color:#34d399;">● Jornada (h)</span>
+    <span style="color:#fbbf24;">● Almoço (h)</span>
+  </div>
+</section>
+
+</main>
+<footer>Previsão de Batimento de Ponto — dados permanecem no seu navegador.</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  const DEFAULTS = {
+    saidaFinal: 17*3600,
+    jornada: 8*3600,
+    almoco: 1*3600 + 6*60,
+    almocoMin: 0*3600 + 30*60,
+    manha: 4*3600 + 25*60,
+    tarde: 3*3600 + 39*60
+  };
+
+  function toSec(t){
+    if(!t) return 0;
+    const parts = String(t).trim().split(":");
+    if(parts.length < 2) return 0;
+    const h = parseInt(parts[0],10)||0;
+    const m = parseInt(parts[1],10)||0;
+    const s = parseInt(parts[2]||"0",10)||0;
+    return h*3600 + m*60 + s;
+  }
+  function toTime(sec){
+    sec = Math.round(sec/60)*60;
+    const neg = sec < 0;
+    sec = Math.abs(sec);
+    const h = Math.floor(sec/3600);
+    const m = Math.floor((sec%3600)/60);
+    const str = String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
+    return neg ? "-"+str : str;
+  }
+
+  function loadConfig(){
+    try {
+      const raw = localStorage.getItem("ponto.config");
+      if(raw){ const c = JSON.parse(raw); return Object.assign({}, DEFAULTS, c); }
+    } catch(e){}
+    return Object.assign({}, DEFAULTS);
+  }
+  function saveConfig(cfg){ localStorage.setItem("ponto.config", JSON.stringify(cfg)); }
+  function loadHistory(){
+    try {
+      const raw = localStorage.getItem("ponto.history");
+      if(raw) return JSON.parse(raw);
+    } catch(e){}
+    return [];
+  }
+  function saveHistory(h){ localStorage.setItem("ponto.history", JSON.stringify(h)); }
+
+  function loadComp(){
+    try {
+      const raw = localStorage.getItem("ponto.comp");
+      if(raw) return JSON.parse(raw);
+    } catch(e){}
+    return [];
+  }
+  function saveComp(c){ localStorage.setItem("ponto.comp", JSON.stringify(c)); }
+
+  let config = loadConfig();
+  let history = loadHistory();
+  let compHistory = loadComp();
+  let compEditId = null;
+
+  function today(){ return new Date().toISOString().slice(0,10); }
+
+  function computeMeans(records){
+    const valid = records.filter(r => r.entrada && r.saidaAlmoco && r.retorno && r.saida);
+    if(valid.length === 0) return null;
+    let e=0,a=0,r=0,s=0,n=valid.length;
+    for(const x of valid){
+      e += toSec(x.entrada); a += toSec(x.saidaAlmoco);
+      r += toSec(x.retorno); s += toSec(x.saida);
+    }
+    const manha = (a - e)/n;
+    const almoco = (r - a)/n;
+    const tarde = (s - r)/n;
+    const jornada = manha + tarde;
+    return { n, entrada: e/n, saidaAlmoco: a/n, retorno: r/n, saida: s/n,
+             manha, almoco, tarde, jornada };
+  }
+
+  function applyMeansToConfig(m){
+    if(!m) return false;
+    config.manha = Math.round(m.manha/60)*60;
+    config.tarde = Math.round(m.tarde/60)*60;
+    config.almoco = Math.round(m.almoco/60)*60;
+    return true;
+  }
+
+  function predict(){
+    const S = config.saidaFinal;
+    const J = config.jornada;
+    const A = config.almoco;
+    const Amin = config.almocoMin;
+    const E = toSec($("histEntrada").value) || null;
+    const SA = toSec($("histSaidaAlmoco").value) || null;
+    const RT = toSec($("histRetorno").value) || null;
+    const SS = toSec($("histSaida").value) || null;
+
+    const items = [];
+    let nota = "";
+
+    if(!E){
+      const entrada = S - J - A;
+      const saidaAlmoco = entrada + config.manha;
+      const retorno = saidaAlmoco + A;
+      const saidaFinal = S;
+      items.push({k:"Entrada (prevista)", v:toTime(entrada)});
+      items.push({k:"Saída para almoço", v:toTime(saidaAlmoco)});
+      items.push({k:"Retorno do almoço", v:toTime(retorno)});
+      items.push({k:"Saída final", v:toTime(saidaFinal)});
+      items.push({k:"Jornada líquida", v:toTime(J)});
+      nota = "Entrada calculada para completar " + toTime(J) + " com saída às " + toTime(S) + ".";
+      return { items, nota };
+    }
+
+    if(E && SA && RT && SS){
+      const manha = SA - E;
+      const almoco = RT - SA;
+      const tarde = SS - RT;
+      const jornadaReal = manha + tarde;
+      items.push({k:"Entrada", v:toTime(E)});
+      items.push({k:"Saída para almoço", v:toTime(SA)});
+      items.push({k:"Retorno do almoço", v:toTime(RT)});
+      items.push({k:"Saída final", v:toTime(SS)});
+      items.push({k:"Jornada resultante", v:toTime(jornadaReal)});
+      items.push({k:"Desvio vs alvo", v:toTime(jornadaReal - J)});
+      nota = "Jornada resultante " + toTime(jornadaReal) + " (alvo " + toTime(J) + ").";
+      return { items, nota };
+    }
+
+    if(E && !SA && !RT && !SS){
+      const trabalhoDesejado = S - E - A;
+      if(S - E - Amin < 0){
+        return { error: "Entrada muito tarde: não há tempo para almoço mínimo até a saída desejada." };
+      }
+      let A_usado = A;
+      let saidaFinal = S;
+      let ajustouAlmoco = false;
+      let passouSaida = false;
+      let trabalho;
+      if(trabalhoDesejado >= J){
+        A_usado = A;
+        saidaFinal = S;
+        trabalho = trabalhoDesejado;
+      } else {
+        const A_calc = S - E - J;
+        if(A_calc >= Amin){
+          A_usado = A_calc;
+          saidaFinal = S;
+          trabalho = J;
+          ajustouAlmoco = true;
+        } else {
+          A_usado = Amin;
+          saidaFinal = E + J + Amin;
+          trabalho = J;
+          ajustouAlmoco = true;
+          passouSaida = true;
+        }
+      }
+      const soma = config.manha + config.tarde;
+      const frac = soma > 0 ? config.manha / soma : 0.5;
+      const manha = Math.round((trabalho * frac)/60)*60;
+      const tarde = trabalho - manha;
+      const saidaAlmoco = E + manha;
+      const retorno = saidaAlmoco + A_usado;
+      const jornadaReal = manha + tarde;
+      items.push({k:"Entrada (informada)", v:toTime(E)});
+      items.push({k:"Saída para almoço", v:toTime(saidaAlmoco)});
+      items.push({k:"Retorno do almoço", v:toTime(retorno)});
+      items.push({k: passouSaida ? "Saída final (prevista)" : "Saída final (desejada)", v:toTime(saidaFinal)});
+      items.push({k:"Almoço utilizado", v:toTime(A_usado)});
+      items.push({k:"Jornada resultante", v:toTime(jornadaReal)});
+      items.push({k:"Desvio vs alvo", v:toTime(jornadaReal - J)});
+      let notaBase = "Modo registro: jornada resultante " + toTime(jornadaReal) +
+             " (alvo " + toTime(J) + "). ";
+      if(ajustouAlmoco){
+        notaBase += "Duração do almoço ajustada de " + toTime(A) + " para " + toTime(A_usado) +
+                    " para fechar a jornada (mínimo " + toTime(Amin) + "). ";
+      }
+      if(passouSaida){
+        notaBase += "Saída final passou de " + toTime(S) + " para " + toTime(saidaFinal) +
+                    " para fechar a jornada alvo. ";
+      }
+      nota = notaBase +
+             (jornadaReal - J < 0 ? "Faltam " : (jornadaReal - J > 0 ? "Sobram " : "Exatamente ")) +
+             (jornadaReal - J !== 0 ? toTime(Math.abs(jornadaReal - J)) + " para a jornada alvo." : "jornada alvo.");
+      return { items, nota };
+    }
+
+    if(E && SA && !RT && !SS){
+      const manha = SA - E;
+      const jornadaRestante = J - manha;
+      if(jornadaRestante < 0){
+        return { error: "Manhã excedeu a jornada alvo." };
+      }
+      const tardeDesejada = S - SA - A;
+      let A_usado = A;
+      let saidaFinal = S;
+      let ajustou = false;
+      let passou = false;
+      if(tardeDesejada >= jornadaRestante){
+        A_usado = A;
+        saidaFinal = S;
+      } else {
+        const A_calc = S - E - J;
+        if(A_calc >= Amin){
+          A_usado = A_calc;
+          saidaFinal = S;
+          ajustou = true;
+        } else {
+          A_usado = Amin;
+          saidaFinal = SA + Amin + jornadaRestante;
+          ajustou = true;
+          passou = saidaFinal > S;
+        }
+      }
+      const retorno = SA + A_usado;
+      const jornadaReal = manha + jornadaRestante;
+      items.push({k:"Entrada", v:toTime(E)});
+      items.push({k:"Saída para almoço", v:toTime(SA)});
+      items.push({k:"Retorno (previsto)", v:toTime(retorno)});
+      items.push({k: passou ? "Saída final (prevista)" : "Saída final (desejada)", v:toTime(saidaFinal)});
+      items.push({k:"Almoço utilizado", v:toTime(A_usado)});
+      items.push({k:"Jornada resultante", v:toTime(jornadaReal)});
+      nota = "Manhã realizada " + toTime(manha) + ". Retorno e saída previstos." +
+             (ajustou ? " Almoço ajustado para " + toTime(A_usado) + "." : "") +
+             (passou ? " Saída final passou para " + toTime(saidaFinal) + "." : "");
+      return { items, nota };
+    }
+
+    if(E && SA && RT && !SS){
+      const manha = SA - E;
+      const tardeNecessaria = J - manha;
+      if(tardeNecessaria < 0){
+        return { error: "Manhã excedeu a jornada alvo." };
+      }
+      const saidaPrevista = RT + tardeNecessaria;
+      const saidaFinal = saidaPrevista > S ? saidaPrevista : S;
+      const jornadaReal = manha + (saidaFinal - RT);
+      items.push({k:"Entrada", v:toTime(E)});
+      items.push({k:"Saída para almoço", v:toTime(SA)});
+      items.push({k:"Retorno", v:toTime(RT)});
+      items.push({k: saidaFinal > S ? "Saída final (prevista)" : "Saída final (desejada)", v:toTime(saidaFinal)});
+      items.push({k:"Jornada resultante", v:toTime(jornadaReal)});
+      nota = "Saída final prevista para fechar a jornada." +
+             (saidaFinal > S ? " Passou do desejado." : "");
+      return { items, nota };
+    }
+
+    return { error: "Preencha os batimentos em ordem (entrada, saída almoço, retorno, saída)." };
+  }
+  function parseCsv(text){
+    const lines = text.trim().split(/\r?\n/).filter(l=>l.trim()!=="");
+    if(lines.length === 0) return [];
+    let start = 0;
+    let idx = {data:0, entrada:1, saidaAlmoco:2, retorno:3, saida:4};
+    const first = lines[0].toLowerCase();
+    if(first.includes("entrada")){
+      start = 1;
+      const cols = lines[0].split(",").map(c=>c.trim().toLowerCase());
+      const find = (name) => cols.findIndex(c => c.includes(name));
+      idx.data = find("data"); if(idx.data < 0) idx.data = 0;
+      idx.entrada = find("entrada");
+      idx.saidaAlmoco = cols.findIndex(c => c.includes("saida") && c.includes("alm"));
+      if(idx.saidaAlmoco < 0) idx.saidaAlmoco = find("saida_almoco");
+      idx.retorno = find("retorno");
+      idx.saida = cols.findIndex(c => c.includes("saida") && !c.includes("alm"));
+      if(idx.saida < 0) idx.saida = 4;
+    }
+    const out = [];
+    for(let i=start;i<lines.length;i++){
+      const cols = lines[i].split(",").map(c=>c.trim());
+      const rec = {
+        id: Date.now() + "-" + i,
+        date: idx.data >= 0 ? (cols[idx.data]||"") : "",
+        entrada: toTime(toSec(cols[idx.entrada])),
+        saidaAlmoco: toTime(toSec(cols[idx.saidaAlmoco])),
+        retorno: toTime(toSec(cols[idx.retorno])),
+        saida: toTime(toSec(cols[idx.saida]))
+      };
+      if(rec.entrada && rec.saida) out.push(rec);
+    }
+    return out;
+  }
+  function parsePaste(text){
+    const meses = {
+      "janeiro":1,"fevereiro":2,"março":3,"marco":3,"abril":4,"maio":5,"junho":6,
+      "julho":7,"agosto":8,"setembro":9,"outubro":10,"novembro":11,"dezembro":12
+    };
+    const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(l=>l!=="");
+    const out = [];
+    let currentDate = "";
+    let times = [];
+    function flush(){
+      if(times.length >= 4 && currentDate){
+        out.push({
+          id: Date.now() + "-" + out.length,
+          date: currentDate,
+          entrada: toTime(toSec(times[0])),
+          saidaAlmoco: toTime(toSec(times[1])),
+          retorno: toTime(toSec(times[2])),
+          saida: toTime(toSec(times[3]))
+        });
+      }
+      times = [];
+    }
+    for(const line of lines){
+      // detecta data por extenso: "Quarta, 28 de Outubro de 2026" ou "28 de Outubro de 2026"
+      const mDate = line.match(/(\d{1,2})\s+de\s+([A-Za-zÀ-ÿ]+)\s+de\s+(\d{4})/i);
+      if(mDate){
+        // se já tinha data com 4 horários, fecha antes
+        if(times.length >= 4) flush();
+        const d = mDate[1].padStart(2,"0");
+        const mesNome = mDate[2].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+        const mo = (meses[mesNome] || meses[mDate[2].toLowerCase()] || 0);
+        const moStr = String(mo).padStart(2,"0");
+        const y = mDate[3];
+        currentDate = y+"-"+moStr+"-"+d;
+        times = [];
+        continue;
+      }
+      // detecta data numérica dd/mm/yyyy
+      const dm = line.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+      if(dm && !/\d:\d/.test(line)){
+        if(times.length >= 4) flush();
+        const d = dm[1].padStart(2,"0");
+        const mo = dm[2].padStart(2,"0");
+        let y = dm[3]; if(y.length===2) y="20"+y;
+        currentDate = y+"-"+mo+"-"+d;
+        times = [];
+        continue;
+      }
+      // detecta horário
+      const tm = line.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+      if(tm){
+        const h = tm[1].padStart(2,"0");
+        times.push(h+":"+tm[2]);
+        if(times.length >= 4){
+          flush();
+        }
+        continue;
+      }
+      // linha com vários horários na mesma linha (fallback)
+      const timesInLine = line.match(/(\d{1,2}):(\d{2})/g);
+      if(timesInLine && timesInLine.length >= 4){
+        const ts = timesInLine.slice(0,4).map(t=>{const p=t.split(":");return p[0].padStart(2,"0")+":"+p[1];});
+        if(!currentDate) currentDate = today();
+        out.push({
+          id: Date.now() + "-" + out.length,
+          date: currentDate,
+          entrada: toTime(toSec(ts[0])),
+          saidaAlmoco: toTime(toSec(ts[1])),
+          retorno: toTime(toSec(ts[2])),
+          saida: toTime(toSec(ts[3]))
+        });
+        times = [];
+      }
+    }
+    if(times.length >= 4 && currentDate){
+      flush();
+    }
+    return out;
+  }
+
+  function exportCsv(records){
+    const header = "data,entrada,saida_almoco,retorno_almoco,saida";
+    const rows = records.map(r => [r.date, r.entrada, r.saidaAlmoco, r.retorno, r.saida].join(","));
+    return header + "\n" + rows.join("\n");
+  }
+  function parseCompCsv(text){
+    const lines = text.trim().split(/\r?\n/).filter(l=>l.trim()!=="");
+    if(lines.length === 0) return [];
+    let start = 0;
+    let idx = {data:0, inicio:1, fim:2, duracao:3, motivo:4};
+    const first = lines[0].toLowerCase();
+    if(first.includes("inicio") || first.includes("início") || first.includes("fim")){
+      start = 1;
+      const cols = lines[0].split(",").map(c=>c.trim().toLowerCase());
+      const find = (name) => cols.findIndex(c => c.includes(name));
+      idx.data = find("data"); if(idx.data < 0) idx.data = 0;
+      idx.inicio = find("inicio"); if(idx.inicio < 0) idx.inicio = find("início");
+      if(idx.inicio < 0) idx.inicio = 1;
+      idx.fim = find("fim"); if(idx.fim < 0) idx.fim = 2;
+      idx.duracao = find("duracao"); if(idx.duracao < 0) idx.duracao = find("duração");
+      if(idx.duracao < 0) idx.duracao = 3;
+      idx.motivo = find("motivo"); if(idx.motivo < 0) idx.motivo = 4;
+    }
+    const out = [];
+    for(let i=start;i<lines.length;i++){
+      const cols = lines[i].split(",").map(c=>c.trim());
+      const ini = cols[idx.inicio] || "";
+      const fim = cols[idx.fim] || "";
+      if(!ini || !fim) continue;
+      const dur = idx.duracao >= 0 ? (cols[idx.duracao] || toTime(toSec(fim)-toSec(ini)+( (toSec(fim)<toSec(ini))?24*3600:0 ))) : toTime(toSec(fim)-toSec(ini)+( (toSec(fim)<toSec(ini))?24*3600:0 ));
+      out.push({
+        id: Date.now() + "-" + i,
+        data: idx.data >= 0 ? (cols[idx.data]||"") : "",
+        inicio: toTime(toSec(ini)).slice(0,5),
+        fim: toTime(toSec(fim)).slice(0,5),
+        duracao: dur.slice(0,5),
+        motivo: idx.motivo >= 0 ? (cols[idx.motivo]||"") : ""
+      });
+    }
+    return out;
+  }
+  function exportCompCsv(records){
+    const header = "data,inicio,fim,duracao,motivo";
+    const rows = records.map(r => [r.data, r.inicio, r.fim, r.duracao, r.motivo].join(","));
+    return header + "\n" + rows.join("\n");
+  }
+
+  const $ = (id) => document.getElementById(id);
+
+  function syncConfigFromUI(){
+    config.saidaFinal = toSec($("cfgSaidaFinal").value);
+    config.jornada = toSec($("cfgJornada").value);
+    config.almoco = toSec($("cfgAlmoco").value);
+    config.almocoMin = toSec($("cfgAlmocoMin").value);
+    config.manha = toSec($("cfgManha").value);
+    config.tarde = toSec($("cfgTarde").value);
+    saveConfig(config);
+  }
+  function syncUIToConfig(){
+    $("cfgSaidaFinal").value = toTime(config.saidaFinal).slice(0,5);
+    $("cfgJornada").value = toTime(config.jornada).slice(0,5);
+    $("cfgAlmoco").value = toTime(config.almoco).slice(0,5);
+    $("cfgAlmocoMin").value = toTime(config.almocoMin).slice(0,5);
+    $("cfgManha").value = toTime(config.manha).slice(0,5);
+    $("cfgTarde").value = toTime(config.tarde).slice(0,5);
+  }
+
+  function renderHistory(){
+    const body = $("histBody");
+    body.innerHTML = "";
+    for(const r of history){
+      const jornada = toSec(r.saida) - toSec(r.entrada) - (toSec(r.retorno)-toSec(r.saidaAlmoco));
+      const tr = document.createElement("tr");
+      if(jornada < config.jornada){ tr.classList.add("abaixo"); }
+      tr.innerHTML = "<td>"+(r.date||"-")+"</td>"+
+        "<td>"+r.entrada+"</td>"+
+        "<td>"+r.saidaAlmoco+"</td>"+
+        "<td>"+r.retorno+"</td>"+
+        "<td>"+r.saida+"</td>"+
+        "<td>"+toTime(jornada)+"</td>"+
+        "<td class='row-actions'><button class='btn btn-danger' data-id='"+r.id+"'>Excluir</button></td>";
+      body.appendChild(tr);
+    }
+    $("histCount").textContent = history.length + " registro(s).";
+    body.querySelectorAll("button[data-id]").forEach(b=>{
+      b.addEventListener("click", ()=>{
+        const id = b.getAttribute("data-id");
+        history = history.filter(r=>r.id !== id);
+        saveHistory(history);
+        renderHistory();
+        renderStats();
+      });
+    });
+    renderStats();
+    checkBackupReminder();
+    drawTrends();
+  }
+
+  function renderStats(){
+    const m = computeMeans(history);
+    const grid = $("statsGrid");
+    grid.innerHTML = "";
+    if(!m){
+      $("statsNota").textContent = "Sem registros suficientes para calcular estatísticas.";
+      return;
+    }
+    const items = [
+      {k:"Registros válidos", v: m.n},
+      {k:"Entrada média", v: toTime(m.entrada)},
+      {k:"Saída almoço média", v: toTime(m.saidaAlmoco)},
+      {k:"Retorno médio", v: toTime(m.retorno)},
+      {k:"Saída média", v: toTime(m.saida)},
+      {k:"Jornada média", v: toTime(m.jornada)},
+      {k:"Almoço médio", v: toTime(m.almoco)},
+      {k:"Manhã média", v: toTime(m.manha)},
+      {k:"Tarde média", v: toTime(m.tarde)}
+    ];
+    for(const it of items){
+      const div = document.createElement("div");
+      div.className = "result-item";
+      div.innerHTML = "<div class='k'>"+it.k+"</div><div class='v'>"+it.v+"</div>";
+      grid.appendChild(div);
+    }
+    $("statsNota").textContent = "Proporção manhã/tarde: " + (m.manha/(m.manha+m.tarde)*100).toFixed(1) + "% / " + (m.tarde/(m.manha+m.tarde)*100).toFixed(1) + "%.";
+  }
+
+  function showResult(res){
+    const box = $("resultado");
+    if(res && res.error){
+      box.style.display = "block";
+      $("resultadoTitulo").textContent = "Não foi possível calcular";
+      $("resultadoGrid").innerHTML = "";
+      $("resultadoNota").textContent = res.error;
+      $("resultadoNota").className = "note warn";
+      return;
+    }
+    box.style.display = "block";
+    $("resultadoTitulo").textContent = "Batimentos previstos";
+    const grid = $("resultadoGrid");
+    grid.innerHTML = "";
+    for(const it of res.items){
+      const div = document.createElement("div");
+      div.className = "result-item";
+      div.innerHTML = "<div class='k'>"+it.k+"</div><div class='v'>"+it.v+"</div>";
+      grid.appendChild(div);
+    }
+    $("resultadoNota").textContent = res.nota;
+    $("resultadoNota").className = "note";
+  }
+
+  syncUIToConfig();
+
+  ["cfgSaidaFinal","cfgJornada","cfgAlmoco","cfgAlmocoMin","cfgManha","cfgTarde"].forEach(id=>{
+    $(id).addEventListener("change", syncConfigFromUI);
+  });
+
+  $("btnRestaurar").addEventListener("click", ()=>{
+    config = Object.assign({}, DEFAULTS);
+    saveConfig(config);
+    syncUIToConfig();
+  });
+
+  $("btnRecalcStats").addEventListener("click", ()=>{
+    const m = computeMeans(history);
+    if(!m){ alert("Histórico insuficiente."); return; }
+    applyMeansToConfig(m);
+    saveConfig(config);
+    syncUIToConfig();
+    alert("Médias atualizadas a partir do histórico.");
+  });
+
+  $("btnCalcular").addEventListener("click", ()=>{
+    syncConfigFromUI();
+    const res = predict();
+    showResult(res);
+  });
+
+  $("btnAddHist").addEventListener("click", ()=>{
+    const entrada = toSec($("histEntrada").value);
+    const saidaAlmoco = toSec($("histSaidaAlmoco").value);
+    const retorno = toSec($("histRetorno").value);
+    const saida = toSec($("histSaida").value);
+    if(!entrada || !saida){ alert("Preencha ao menos entrada e saída final."); return; }
+    // validação de coerência temporal
+    if(saidaAlmoco && !(entrada < saidaAlmoco)){ alert("Entrada deve ser anterior à saída para almoço."); return; }
+    if(retorno && saidaAlmoco && !(saidaAlmoco < retorno)){ alert("Saída para almoço deve ser anterior ao retorno."); return; }
+    if(retorno && saida && !(retorno < saida)){ alert("Retorno deve ser anterior à saída final."); return; }
+    if(saidaAlmoco && saida && !(saidaAlmoco < saida)){ alert("Saída para almoço deve ser anterior à saída final."); return; }
+    const rec = {
+      id: "h"+Date.now(),
+      date: $("histData").value || today(),
+      entrada: toTime(entrada),
+      saidaAlmoco: toTime(saidaAlmoco),
+      retorno: toTime(retorno),
+      saida: toTime(saida)
+    };
+    history.push(rec);
+    saveHistory(history);
+    renderHistory();
+    checkBackupReminder();
+    $("histEntrada").value=""; $("histSaidaAlmoco").value=""; $("histRetorno").value=""; $("histSaida").value="";
+  });
+
+  $("btnLimparCamposHist").addEventListener("click", ()=>{
+    $("histData").value = today();
+    $("histEntrada").value = "";
+    $("histSaidaAlmoco").value = "";
+    $("histRetorno").value = "";
+    $("histSaida").value = "";
+  });
+
+  $("btnImportar").addEventListener("click", ()=> $("fileCsv").click());
+
+  $("btnImportarPaste").addEventListener("click", ()=>{
+    const txt = $("pasteArea").value;
+    if(!txt.trim()){ alert("Cole algum texto."); return; }
+    const recs = parsePaste(txt);
+    if(recs.length === 0){ alert("Nenhum registro válido encontrado no texto."); return; }
+    history = history.concat(recs);
+    saveHistory(history);
+    renderHistory();
+    alert(recs.length + " registro(s) importado(s) do texto.");
+    $("pasteArea").value = "";
+  });
+  $("fileCsv").addEventListener("change", (e)=>{
+    const f = e.target.files[0];
+    if(!f) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const recs = parseCsv(ev.target.result);
+      if(recs.length === 0){ alert("Nenhum registro válido encontrado."); return; }
+      history = history.concat(recs);
+      saveHistory(history);
+      renderHistory();
+      alert(recs.length + " registro(s) importado(s).");
+    };
+    reader.readAsText(f);
+    e.target.value = "";
+  });
+
+  $("btnExportar").addEventListener("click", ()=>{
+    if(history.length === 0){ alert("Histórico vazio."); return; }
+    const csv = exportCsv(history);
+    const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "ponto-historico.csv";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    markExported();
+  });
+
+  $("btnImportarComp").addEventListener("click", ()=> $("fileCompCsv").click());
+  $("fileCompCsv").addEventListener("change", (e)=>{
+    const f = e.target.files[0];
+    if(!f) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const recs = parseCompCsv(ev.target.result);
+      if(recs.length === 0){ alert("Nenhum registro válido encontrado."); return; }
+      compHistory = compHistory.concat(recs);
+      saveComp(compHistory);
+      renderComp();
+      alert(recs.length + " registro(s) importado(s).");
+    };
+    reader.readAsText(f);
+    e.target.value = "";
+  });
+
+  $("btnExportarComp").addEventListener("click", ()=>{
+    if(compHistory.length === 0){ alert("Histórico de compensação vazio."); return; }
+    const csv = exportCompCsv(compHistory);
+    const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "compensacao-historico.csv";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  $("btnExportarTudo").addEventListener("click", ()=>{
+    const data = { config: config, history: history, compHistory: compHistory };
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "ponto-dados.json";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    markExported();
+  });
+
+  $("btnImportarTudo").addEventListener("click", ()=> $("fileTudo").click());
+  $("fileTudo").addEventListener("change", (e)=>{
+    const f = e.target.files[0];
+    if(!f) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if(data.config) { config = Object.assign({}, DEFAULTS, data.config); saveConfig(config); syncUIToConfig(); }
+        if(Array.isArray(data.history)) { history = data.history; saveHistory(history); }
+        if(Array.isArray(data.compHistory)) { compHistory = data.compHistory; saveComp(compHistory); }
+        renderHistory(); renderStats(); renderComp();
+        alert("Dados importados com sucesso.");
+      } catch(err){ alert("Arquivo JSON inválido."); }
+    };
+    reader.readAsText(f);
+    e.target.value = "";
+  });
+
+  $("btnLimparHist").addEventListener("click", ()=>{
+    if(!confirm("Limpar todo o histórico?")) return;
+    history = [];
+    saveHistory(history);
+    renderHistory();
+  });
+
+  // ---------- compensação ----------
+  function updateCompDuracao(){
+    const ini = toSec($("compInicio").value);
+    const fim = toSec($("compFim").value);
+    let dur = fim - ini;
+    if(dur < 0) dur += 24*3600;
+    $("compDuracao").value = toTime(dur);
+  }
+  function drawTrends(){
+    const canvas = $("trendCanvas");
+    if(!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+    // background
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0,0,w,h);
+    const data = history.slice().sort((a,b)=> (a.date||"").localeCompare(b.date||""));
+    if(data.length < 2){
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "14px sans-serif";
+      ctx.fillText("Dados insuficientes para gráfico (mínimo 2 registros).", 20, h/2);
+      return;
+    }
+    const entradas = data.map(r => toSec(r.entrada)/3600);
+    const jornadas = data.map(r => (toSec(r.saida)-toSec(r.entrada)-(toSec(r.retorno)-toSec(r.saidaAlmoco)))/3600);
+    const almocos = data.map(r => (toSec(r.retorno)-toSec(r.saidaAlmoco))/3600);
+
+    const all = entradas.concat(jornadas).concat(almocos);
+    const minV = Math.min(...all);
+    const maxV = Math.max(...all);
+    const range = (maxV - minV) || 1;
+    const pad = 40;
+    const plotW = w - pad*2;
+    const plotH = h - pad*2;
+    const n = data.length;
+
+    function x(i){ return pad + (i/(n-1))*plotW; }
+    function y(v){ return pad + plotH - ((v - minV)/range)*plotH; }
+
+    // axes
+    ctx.strokeStyle = "#334155";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad, pad);
+    ctx.lineTo(pad, h-pad);
+    ctx.lineTo(w-pad, h-pad);
+    ctx.stroke();
+
+    // y labels
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "right";
+    for(let i=0;i<=4;i++){
+      const v = minV + (range*i/4);
+      const yy = y(v);
+      ctx.fillText(v.toFixed(1), pad-6, yy+4);
+      ctx.strokeStyle = "#1e293b";
+      ctx.beginPath(); ctx.moveTo(pad, yy); ctx.lineTo(w-pad, yy); ctx.stroke();
+    }
+
+    function drawLine(arr, color){
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      arr.forEach((v,i)=>{
+        const xx = x(i), yy = y(v);
+        if(i===0) ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy);
+      });
+      ctx.stroke();
+      // points
+      ctx.fillStyle = color;
+      arr.forEach((v,i)=>{
+        ctx.beginPath();
+        ctx.arc(x(i), y(v), 3, 0, Math.PI*2);
+        ctx.fill();
+      });
+    }
+    drawLine(entradas, "#60a5fa");
+    drawLine(jornadas, "#34d399");
+    drawLine(almocos, "#fbbf24");
+
+    // x labels (sparse)
+    ctx.fillStyle = "#94a3b8";
+    ctx.textAlign = "center";
+    const step = Math.max(1, Math.floor(n/6));
+    for(let i=0;i<n;i+=step){
+      const label = data[i].date ? data[i].date.slice(5) : String(i+1);
+      ctx.fillText(label, x(i), h-pad+14);
+    }
+  }
+
+  function editComp(id){
+    const c = compHistory.find(x=>x.id === id);
+    if(!c) return;
+    compEditId = id;
+    $("compData").value = c.data || today();
+    $("compInicio").value = c.inicio;
+    $("compFim").value = c.fim;
+    $("compMotivo").value = c.motivo || "";
+    updateCompDuracao();
+    $("btnAddComp").textContent = "Salvar alterações";
+    $("btnCancelarComp").style.display = "inline-block";
+  }
+  function cancelEditComp(){
+    compEditId = null;
+    $("compData").value = today();
+    $("compInicio").value = "";
+    $("compFim").value = "";
+    $("compDuracao").value = "";
+    $("compMotivo").value = "";
+    $("btnAddComp").textContent = "Adicionar ao histórico de compensação";
+    $("btnCancelarComp").style.display = "none";
+  }
+  function renderComp(){
+    const body = $("compBody");
+    body.innerHTML = "";
+    for(const c of compHistory){
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>"+(c.data||"-")+"</td><td>"+c.inicio+"</td><td>"+c.fim+"</td><td>"+c.duracao+"</td><td>"+(c.motivo||"-")+"</td>"+
+        "<td class='row-actions'><button class='btn btn-danger' data-id='"+c.id+"'>Excluir</button></td>";
+      tr.style.cursor = "pointer";
+      tr.addEventListener("click", (ev)=>{
+        if(ev.target && ev.target.tagName === "BUTTON") return;
+        editComp(c.id);
+      });
+      body.appendChild(tr);
+    }
+    $("compCount").textContent = compHistory.length + " registro(s).";
+    let total = 0;
+    for(const c of compHistory) total += toSec(c.duracao);
+    $("compTotal").textContent = toTime(total);
+
+    // totais por motivo
+    const porMotivo = {};
+    for(const c of compHistory){
+      const m = c.motivo || "(sem motivo)";
+      porMotivo[m] = (porMotivo[m] || 0) + toSec(c.duracao);
+    }
+    const div = $("compPorMotivo");
+    const keys = Object.keys(porMotivo).sort();
+    if(keys.length === 0){
+      div.innerHTML = "";
+    } else {
+      div.innerHTML = "<strong>Totais por motivo:</strong><br>" + keys.map(m =>
+        m + ": " + toTime(porMotivo[m])
+      ).join("<br>");
+    }
+    body.querySelectorAll("button[data-id]").forEach(b=>{
+      b.addEventListener("click", ()=>{
+        const id = b.getAttribute("data-id");
+        compHistory = compHistory.filter(r=>r.id !== id);
+        saveComp(compHistory);
+        renderComp();
+      });
+    });
+  }
+
+  $("compInicio").addEventListener("input", updateCompDuracao);
+  $("compFim").addEventListener("input", updateCompDuracao);
+  $("btnAddComp").addEventListener("click", ()=>{
+    const ini = $("compInicio").value;
+    const fim = $("compFim").value;
+    if(!ini || !fim){ alert("Preencha início e fim."); return; }
+    const dur = $("compDuracao").value;
+    const data = $("compData").value || today();
+    const motivo = $("compMotivo").value.trim();
+    if(compEditId){
+      const idx = compHistory.findIndex(x=>x.id === compEditId);
+      if(idx >= 0){
+        compHistory[idx] = { id:compEditId, data:data, inicio:ini, fim:fim, duracao:dur, motivo:motivo };
+      }
+      compEditId = null;
+    } else {
+      compHistory.push({ id:"c"+Date.now(), data:data, inicio:ini, fim:fim, duracao:dur, motivo:motivo });
+    }
+    saveComp(compHistory);
+    renderComp();
+    cancelEditComp();
+  });
+  $("btnCancelarComp").addEventListener("click", cancelEditComp);
+  $("btnLimparComp").addEventListener("click", ()=>{
+    if(!confirm("Limpar todo o histórico de compensação?")) return;
+    compHistory = [];
+    saveComp(compHistory);
+    renderComp();
+  });
+
+  function checkBackupReminder(){
+    const last = parseInt(localStorage.getItem("ponto.lastExportCount") || "0", 10);
+    const rem = $("backupReminder");
+    if(history.length - last >= 5){
+      rem.style.display = "block";
+    } else {
+      rem.style.display = "none";
+    }
+  }
+  function markExported(){
+    localStorage.setItem("ponto.lastExportCount", String(history.length));
+    checkBackupReminder();
+  }
+
+  // atalhos de teclado
+  document.addEventListener("keydown", (e)=>{
+    if(e.ctrlKey && e.key === "Enter"){ e.preventDefault(); $("btnCalcular").click(); }
+    if(e.ctrlKey && (e.key === "s" || e.key === "S")){ e.preventDefault(); if(e.shiftKey){ $("btnExportarTudo").click(); } else { $("btnExportar").click(); } }
+  });
+
+  // máscara e seletor manual para campos de horário do histórico
+  let lastTimeField = null;
+  ["histEntrada","histSaidaAlmoco","histRetorno","histSaida"].forEach(id=>{
+    const el = $(id);
+    el.addEventListener("focus", ()=>{ lastTimeField = el; });
+    el.addEventListener("input", ()=>{
+      let raw = el.value;
+      if(raw.includes(":")){
+        // preserva formato digitado com dois-pontos
+        let parts = raw.split(":");
+        let h = (parts[0]||"").replace(/[^0-9]/g,"").slice(0,2);
+        let m = (parts[1]||"").replace(/[^0-9]/g,"").slice(0,2);
+        el.value = (h + (parts.length>1 ? ":"+m : ""));
+        return;
+      }
+      let v = raw.replace(/[^0-9]/g,"");
+      if(v.length > 4) v = v.slice(0,4);
+      if(v.length >= 3) v = v.slice(0,2)+":"+v.slice(2);
+      el.value = v;
+    });
+  });
+  $("histTimePicker").addEventListener("change", ()=>{
+    if(lastTimeField){ lastTimeField.value = $("histTimePicker").value.slice(0,5); }
+  });
+
+  // init: sugerir data atual
+  if(!$("histData").value) $("histData").value = today();
+  if(!$("compData").value) $("compData").value = today();
+
+  renderHistory();
+  renderStats();
+  renderComp();
+  drawTrends();
+})();
+</script>
+</body>
+</html>

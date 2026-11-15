@@ -1,0 +1,13 @@
+# dependências
+desktop/node_modules/
+desktop/dist/
+# build outputs
+dist/
+*.exe
+*.zip
+# arquivos grandes/temporários
+conteudo.html
+*.log
+# OS
+.DS_Store
+Thumbs.db

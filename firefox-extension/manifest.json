@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Copiar Batimento de Ponto",
+  "version": "1.1",
+  "description": "Atalho para copiar os batimentos da página do ponto.",
+  "permissions": ["clipboardWrite", "activeTab"],
+  "host_permissions": ["https://spstou.ifractal.com.br/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://spstou.ifractal.com.br/procergs/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "copiar-batimento": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+C",
+        "mac": "Command+Shift+C"
+      },
+      "description": "Copiar batimento de ponto"
+    }
+  }
+}
