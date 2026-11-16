@@ -229,6 +229,16 @@
   }
   function saveHistory(h){ localStorage.setItem("ponto.history", JSON.stringify(h)); }
 
+  function loadDraft(){
+    try {
+      const raw = localStorage.getItem("ponto.draft");
+      if(raw) return JSON.parse(raw);
+    } catch(e){}
+    return null;
+  }
+  function saveDraft(d){ localStorage.setItem("ponto.draft", JSON.stringify(d)); }
+  function clearDraft(){ localStorage.removeItem("ponto.draft"); }
+
   function loadComp(){
     try {
       const raw = localStorage.getItem("ponto.comp");
@@ -241,6 +251,7 @@
   let config = loadConfig();
   let history = loadHistory();
   let compHistory = loadComp();
+  let draft = loadDraft();
   let compEditId = null;
 
   function today(){ return new Date().toISOString().slice(0,10); }
@@ -745,6 +756,7 @@
     saveHistory(history);
     renderHistory();
     checkBackupReminder();
+    clearDraft();
     $("histEntrada").value=""; $("histSaidaAlmoco").value=""; $("histRetorno").value=""; $("histSaida").value="";
   });
 
@@ -754,6 +766,7 @@
     $("histSaidaAlmoco").value = "";
     $("histRetorno").value = "";
     $("histSaida").value = "";
+    clearDraft();
   });
 
   $("btnImportar").addEventListener("click", ()=> $("fileCsv").click());
@@ -1093,6 +1106,44 @@
   });
   $("histTimePicker").addEventListener("change", ()=>{
     if(lastTimeField){ lastTimeField.value = $("histTimePicker").value.slice(0,5); }
+  });
+
+  function applyDraft(){
+    const d = loadDraft();
+    if(!d || d.date !== today()) return false;
+    $("histData").value = d.date;
+    $("histEntrada").value = d.entrada || "";
+    $("histSaidaAlmoco").value = d.saidaAlmoco || "";
+    $("histRetorno").value = d.retorno || "";
+    $("histSaida").value = d.saida || "";
+    return true;
+  }
+  function saveCurrentDraft(){
+    if($("histData").value !== today()) return;
+    saveDraft({
+      date: $("histData").value,
+      entrada: $("histEntrada").value,
+      saidaAlmoco: $("histSaidaAlmoco").value,
+      retorno: $("histRetorno").value,
+      saida: $("histSaida").value
+    });
+  }
+
+  // carregar rascunho do dia ao abrir
+  if(!$("histData").value) $("histData").value = today();
+  applyDraft();
+
+  // ao mudar a data, carregar rascunho se for hoje
+  $("histData").addEventListener("change", ()=>{
+    if($("histData").value === today()){
+      applyDraft();
+    } else {
+      $("histEntrada").value=""; $("histSaidaAlmoco").value=""; $("histRetorno").value=""; $("histSaida").value="";
+    }
+  });
+  // salvar rascunho ao digitar (somente se data == hoje)
+  ["histEntrada","histSaidaAlmoco","histRetorno","histSaida"].forEach(id=>{
+    $(id).addEventListener("input", saveCurrentDraft);
   });
 
   // init: sugerir data atual

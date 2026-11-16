@@ -84,11 +84,12 @@
   <h2>2. Histórico de batimentos</h2>
   <div class="grid">
     <div class="field"><label>Data</label><input type="date" id="histData"></div>
-    <div class="field"><label>Entrada</label><input type="time" id="histEntrada"></div>
-    <div class="field"><label>Saída almoço</label><input type="time" id="histSaidaAlmoco"></div>
-    <div class="field"><label>Retorno almoço</label><input type="time" id="histRetorno"></div>
-    <div class="field"><label>Saída final</label><input type="time" id="histSaida"></div>
+    <div class="field"><label>Entrada</label><input type="text" id="histEntrada" placeholder="HH:MM" maxlength="5" inputmode="numeric"></div>
+    <div class="field"><label>Saída almoço</label><input type="text" id="histSaidaAlmoco" placeholder="HH:MM" maxlength="5" inputmode="numeric"></div>
+    <div class="field"><label>Retorno almoço</label><input type="text" id="histRetorno" placeholder="HH:MM" maxlength="5" inputmode="numeric"></div>
+    <div class="field"><label>Saída final</label><input type="text" id="histSaida" placeholder="HH:MM" maxlength="5" inputmode="numeric"></div>
   </div>
+  <p class="note">Digite manualmente no formato HH:MM ou use o seletor: <input type="time" id="histTimePicker" style="width:auto; display:inline-block; margin-left:6px;"></p>
   <div class="actions">
     <button class="btn btn-success" id="btnAddHist">Adicionar ao histórico</button>
     <button class="btn btn-warning" id="btnLimparCamposHist">Limpar campos</button>
@@ -228,6 +229,16 @@
   }
   function saveHistory(h){ localStorage.setItem("ponto.history", JSON.stringify(h)); }
 
+  function loadDraft(){
+    try {
+      const raw = localStorage.getItem("ponto.draft");
+      if(raw) return JSON.parse(raw);
+    } catch(e){}
+    return null;
+  }
+  function saveDraft(d){ localStorage.setItem("ponto.draft", JSON.stringify(d)); }
+  function clearDraft(){ localStorage.removeItem("ponto.draft"); }
+
   function loadComp(){
     try {
       const raw = localStorage.getItem("ponto.comp");
@@ -240,6 +251,7 @@
   let config = loadConfig();
   let history = loadHistory();
   let compHistory = loadComp();
+  let draft = loadDraft();
   let compEditId = null;
 
   function today(){ return new Date().toISOString().slice(0,10); }
@@ -744,6 +756,7 @@
     saveHistory(history);
     renderHistory();
     checkBackupReminder();
+    clearDraft();
     $("histEntrada").value=""; $("histSaidaAlmoco").value=""; $("histRetorno").value=""; $("histSaida").value="";
   });
 
@@ -753,6 +766,7 @@
     $("histSaidaAlmoco").value = "";
     $("histRetorno").value = "";
     $("histSaida").value = "";
+    clearDraft();
   });
 
   $("btnImportar").addEventListener("click", ()=> $("fileCsv").click());
@@ -1067,6 +1081,69 @@
   document.addEventListener("keydown", (e)=>{
     if(e.ctrlKey && e.key === "Enter"){ e.preventDefault(); $("btnCalcular").click(); }
     if(e.ctrlKey && (e.key === "s" || e.key === "S")){ e.preventDefault(); if(e.shiftKey){ $("btnExportarTudo").click(); } else { $("btnExportar").click(); } }
+  });
+
+  // máscara e seletor manual para campos de horário do histórico
+  let lastTimeField = null;
+  ["histEntrada","histSaidaAlmoco","histRetorno","histSaida"].forEach(id=>{
+    const el = $(id);
+    el.addEventListener("focus", ()=>{ lastTimeField = el; });
+    el.addEventListener("input", ()=>{
+      let raw = el.value;
+      if(raw.includes(":")){
+        // preserva formato digitado com dois-pontos
+        let parts = raw.split(":");
+        let h = (parts[0]||"").replace(/[^0-9]/g,"").slice(0,2);
+        let m = (parts[1]||"").replace(/[^0-9]/g,"").slice(0,2);
+        el.value = (h + (parts.length>1 ? ":"+m : ""));
+        return;
+      }
+      let v = raw.replace(/[^0-9]/g,"");
+      if(v.length > 4) v = v.slice(0,4);
+      if(v.length >= 3) v = v.slice(0,2)+":"+v.slice(2);
+      el.value = v;
+    });
+  });
+  $("histTimePicker").addEventListener("change", ()=>{
+    if(lastTimeField){ lastTimeField.value = $("histTimePicker").value.slice(0,5); }
+  });
+
+  function applyDraft(){
+    const d = loadDraft();
+    if(!d || d.date !== today()) return false;
+    $("histData").value = d.date;
+    $("histEntrada").value = d.entrada || "";
+    $("histSaidaAlmoco").value = d.saidaAlmoco || "";
+    $("histRetorno").value = d.retorno || "";
+    $("histSaida").value = d.saida || "";
+    return true;
+  }
+  function saveCurrentDraft(){
+    if($("histData").value !== today()) return;
+    saveDraft({
+      date: $("histData").value,
+      entrada: $("histEntrada").value,
+      saidaAlmoco: $("histSaidaAlmoco").value,
+      retorno: $("histRetorno").value,
+      saida: $("histSaida").value
+    });
+  }
+
+  // carregar rascunho do dia ao abrir
+  if(!$("histData").value) $("histData").value = today();
+  applyDraft();
+
+  // ao mudar a data, carregar rascunho se for hoje
+  $("histData").addEventListener("change", ()=>{
+    if($("histData").value === today()){
+      applyDraft();
+    } else {
+      $("histEntrada").value=""; $("histSaidaAlmoco").value=""; $("histRetorno").value=""; $("histSaida").value="";
+    }
+  });
+  // salvar rascunho ao digitar (somente se data == hoje)
+  ["histEntrada","histSaidaAlmoco","histRetorno","histSaida"].forEach(id=>{
+    $(id).addEventListener("input", saveCurrentDraft);
   });
 
   // init: sugerir data atual
